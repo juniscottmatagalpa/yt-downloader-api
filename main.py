@@ -1,7 +1,10 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import yt_dlp
+import os
 
 app = Flask(__name__)
+CORS(app)  # 🔥 Esto permite peticiones desde cualquier dominio
 
 @app.route("/")
 def home():
@@ -25,7 +28,8 @@ def download():
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            download_url = info.get("url")
+            formats = info.get("formats", [])
+            download_url = formats[-1]["url"] if formats else info.get("url")
 
         return jsonify({
             "title": info.get("title"),
@@ -36,6 +40,9 @@ def download():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+
+
