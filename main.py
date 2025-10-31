@@ -1,10 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 import yt_dlp
+import tempfile
 import os
+import shutil
 
 app = Flask(__name__)
-CORS(app)  # 🔥 Esto permite peticiones desde cualquier dominio
+CORS(app)  # permite peticiones desde cualquier dominio (GoogieHost incluido)
 
 @app.route("/")
 def home():
@@ -12,37 +14,55 @@ def home():
 
 @app.route("/download", methods=["POST"])
 def download():
-    data = request.get_json()
-    url = data.get("url")
-
-    if not url:
-        return jsonify({"error": "Falta el parámetro 'url'"}), 400
-
     try:
+        data = request.get_json()
+        url = data.get("url")
+
+        if not url:
+            return jsonify({"error": "Falta el parámetro 'url'"}), 400
+
+        # Crear carpeta temporal para el video
+        temp_dir = tempfile.mkdtemp()
+
         ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'best',
-            'noplaylist': True,
+            "outtmpl": os.path.join(temp_dir, "%(title)s.%(ext)s"),
+            "format": "bestvideo+bestaudio/best",
+            "merge_output_format": "mp4",
+            "noplaylist": True,
+            "quiet": True
         }
 
+        # Descargar el video
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            formats = info.get("formats", [])
-            download_url = formats[-1]["url"] if formats else info.get("url")
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
 
-        return jsonify({
-            "title": info.get("title"),
-            "thumbnail": info.get("thumbnail"),
-            "download_url": download_url
-        })
+        # Verificar que el archivo existe
+        if not os.path.exists(filename):
+            return jsonify({"error": "No se pudo descargar el video."}), 500
+
+        # Enviar el archivo como descarga directa
+        response = send_file(filename, as_attachment=True)
+
+        # Eliminar el archivo y carpeta temporal después de enviarlo
+        @response.call_on_close
+        def cleanup():
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"Error limpiando archivos temporales: {e}")
+
+        return response
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
