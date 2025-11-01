@@ -12,8 +12,10 @@ CORS(app)
 def home():
     return "✅ Servidor de descargas activo"
 
-@app.route("/download", methods=["POST"])
-def download():
+
+# 🟢 Ruta para obtener información del video
+@app.route("/info", methods=["POST"])
+def info():
     try:
         data = request.get_json()
         url = data.get("url")
@@ -21,37 +23,71 @@ def download():
         if not url:
             return jsonify({"error": "Falta el parámetro 'url'"}), 400
 
-        # 📂 Crear carpeta temporal para el video
+        ydl_opts = {
+            "quiet": True,
+            "skip_download": True,
+            "noplaylist": True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        hashtags = []
+        if "tags" in info and info["tags"]:
+            hashtags = [f"#{t}" for t in info["tags"][:5]]
+
+        return jsonify({
+            "title": info.get("title"),
+            "thumbnail": info.get("thumbnail"),
+            "hashtags": hashtags,
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# 🔵 Ruta para descargar (alta o baja calidad)
+@app.route("/download", methods=["POST"])
+def download():
+    try:
+        data = request.get_json()
+        url = data.get("url")
+        quality = data.get("quality", "high")  # "high" por defecto
+
+        if not url:
+            return jsonify({"error": "Falta el parámetro 'url'"}), 400
+
         temp_dir = tempfile.mkdtemp()
 
-        # 🔹 Aquí colocas el bloque de opciones de yt-dlp
+        # 🔹 Elegir formato según calidad
+        if quality == "low":
+            fmt = "best[height<=480][ext=mp4]/best[ext=mp4]/best"
+        else:
+            fmt = "bestvideo+bestaudio/best[ext=mp4]/best"
+
         ydl_opts = {
             "outtmpl": os.path.join(temp_dir, "%(title)s.%(ext)s"),
-            "format": "best[ext=mp4]/best",  # fuerza un formato mp4 con audio y video juntos
+            "format": fmt,
             "merge_output_format": "mp4",
             "noplaylist": True,
             "quiet": True
         }
 
-        # 📥 Descargar el video
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
 
-        # 🧾 Verificar que el archivo existe
         if not os.path.exists(filename):
             return jsonify({"error": "No se pudo descargar el video."}), 500
 
-        # 📦 Enviar el archivo como descarga directa
         response = send_file(filename, as_attachment=True)
 
-        # 🧹 Eliminar el archivo y carpeta temporal después de enviarlo
         @response.call_on_close
         def cleanup():
             try:
                 shutil.rmtree(temp_dir)
             except Exception as e:
-                print(f"Error limpiando archivos temporales: {e}")
+                print(f"Error limpiando temporales: {e}")
 
         return response
 
@@ -62,6 +98,8 @@ def download():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
