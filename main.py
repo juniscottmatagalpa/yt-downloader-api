@@ -12,21 +12,19 @@ CORS(app)
 def home():
     return "✅ Servidor de descargas activo"
 
-
 # 🟢 Ruta para obtener información del video
 @app.route("/info", methods=["POST"])
 def info():
     try:
         data = request.get_json()
         url = data.get("url")
-
         if not url:
             return jsonify({"error": "Falta el parámetro 'url'"}), 400
 
         ydl_opts = {
             "quiet": True,
             "skip_download": True,
-            "noplaylist": True,
+            "noplaylist": True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -34,32 +32,31 @@ def info():
 
         hashtags = []
         if "tags" in info and info["tags"]:
-            hashtags = [f"#{t}" for t in info["tags"][:5]]
+            hashtags = [f"#{tag}" for tag in info["tags"][:5]]
 
         return jsonify({
             "title": info.get("title"),
             "thumbnail": info.get("thumbnail"),
-            "hashtags": hashtags,
+            "hashtags": hashtags
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# 🔵 Ruta para descargar (alta o baja calidad)
+# 🔵 Ruta para descargar en baja o alta calidad
 @app.route("/download", methods=["POST"])
 def download():
     try:
         data = request.get_json()
         url = data.get("url")
-        quality = data.get("quality", "high")  # "high" por defecto
+        quality = data.get("quality", "high")
 
         if not url:
             return jsonify({"error": "Falta el parámetro 'url'"}), 400
 
         temp_dir = tempfile.mkdtemp()
 
-        # 🔹 Elegir formato según calidad
         if quality == "low":
             fmt = "best[height<=480][ext=mp4]/best[ext=mp4]/best"
         else:
@@ -69,8 +66,8 @@ def download():
             "outtmpl": os.path.join(temp_dir, "%(title)s.%(ext)s"),
             "format": fmt,
             "merge_output_format": "mp4",
-            "noplaylist": True,
-            "quiet": True
+            "quiet": True,
+            "noplaylist": True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -78,7 +75,7 @@ def download():
             filename = ydl.prepare_filename(info)
 
         if not os.path.exists(filename):
-            return jsonify({"error": "No se pudo descargar el video."}), 500
+            return jsonify({"error": "No se pudo descargar el video"}), 500
 
         response = send_file(filename, as_attachment=True)
 
@@ -87,7 +84,7 @@ def download():
             try:
                 shutil.rmtree(temp_dir)
             except Exception as e:
-                print(f"Error limpiando temporales: {e}")
+                print("Error limpiando temporales:", e)
 
         return response
 
@@ -98,6 +95,8 @@ def download():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
+
 
 
 
